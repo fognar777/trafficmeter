@@ -1,0 +1,175 @@
+#!/bin/ash
+
+#Fg_time=$(date)
+###  Declare Variables  ###
+#F
+
+dayofmonth=$(date -I | cut -d '-' -f 3)
+month=$(date -I | cut -d '-' -f 2)
+currentread_u=$(grep "Thismonth" /tmp/traffic_meter/traffic_statistics | cut -d ' ' -f 3 | cut -d '/' -f 1 | cut -d '.' -f 1 | tr -d ',')
+currentread_d=$(grep "Thismonth" /tmp/traffic_meter/traffic_statistics | cut -d ' ' -f 4 | cut -d '/' -f 1 | cut -d '.' -f 1 | tr -d ',')
+lastread_u=$(sed -n '3,3p;4q' /mnt/sda1/traffic_meter/tmeter)
+lastread_d=$(sed -n '4,4p;5q' /mnt/sda1/traffic_meter/tmeter)
+total_u=$(sed -n '1,1p;2q' /mnt/sda1/traffic_meter/tmeter)
+total_d=$(sed -n '2,2p;3q' /mnt/sda1/traffic_meter/tmeter)
+currenth=$(date +%H)
+currentm=$(date +%M)
+upload_updated=0
+download_updated=0
+
+#F
+###  Declare Functions  ###
+#F
+
+
+rebooted_u()
+{
+log_time=$(date)
+upload_log=$(echo 'TIME:'$log_time 'MSG:Router rebooted Current Upload read of:'$currentread_u ' added to create the total of:'$total_u)
+total_u=$((currentread_u + total_u))
+#sets the updated check to true
+upload_updated=1
+}
+
+
+rebooted_d()
+{
+log_time=$(date)
+download_log=$(echo 'TIME:'$log_time 'MSG:Router rebooted Current download read of:'$currentread_d ' added to create the total of:'$total_d)
+total_d=$((currentread_d + total_d))
+#sets the updated check to true
+download_updated=1
+}
+
+
+normal_u()
+{
+total_u=$((currentread_u - lastread_u + total_u))
+#Comment the following line to turn off verbose logging for the upload part of the meter
+log_time=$(date)
+upload_log=$(echo 'TIME:'$log_time 'MSG:The difference of the Upload read of:'$currentread_u' and the last upload read of:'$lastread_u 'has been added to create the total of:'$total_u)
+#sets the updated check to true
+upload_updated=1
+}
+
+
+normal_d()
+{
+#router didn't reboot
+total_d=$((currentread_d - lastread_d + total_d))
+#Comment the followin two lines to turn off verbose logging for the download part of the meter
+log_time=$(date)
+download_log=$(echo 'TIME:'$log_time 'MSG:The difference of the Download read of:'$currentread_d' and the last download read of:'$lastread_d 'has been added to create the total of:'$total_d)
+#sets the updated check to true
+download_updated=1
+}
+
+
+monthly_reset()
+{
+echo 0 > /mnt/sda1/traffic_meter/tmeter
+echo 0 >> /mnt/sda1/traffic_meter/tmeter
+echo 0 >> /mnt/sda1/traffic_meter/tmeter
+echo 0 >> /mnt/sda1/traffic_meter/tmeter
+log_time=$(date)
+upload_log=$(echo 'TIME:'$log_time 'MSG:The traffic meter has been reset because it is the begining of the month. The last recorded values were Upload:'$total_u ' Download:'$total_d )
+download_log=$(echo 'TIME:'$log_time 'MSG:The traffic meter has been reset because it is the begining of the month. The last recorded values were Upload:'$total_u ' Download:'$total_d )
+}
+
+
+log_update()
+{
+touch /mnt/sda1/traffic_meter/log/$month-$dayofmonth.upload.log
+touch /mnt/sda1/traffic_meter/log/$month-$dayofmonth.download.log
+echo $upload_log >> /mnt/sda1/traffic_meter/log/$month-$dayofmonth.upload.log
+echo $download_log >> /mnt/sda1/traffic_meter/log/$month-$dayofmonth.download.log
+}
+
+#F
+### Run checks to update variables  ###
+#F
+
+#checks to ensure last read variables are present before running. Exit's with an error if they arent
+if [ $lastread_u -lt '1' -o $lastread_d -lt '1' ]
+ then
+  log_time=$(date)
+  upload_log=$(
+echo 'TIME:'$log_time 'MSG: One of the last read values was missing so the script exited prematurly. Last Upload value:'$lastread_u' Current Upload value:'$currentread_u
+        )
+  download_log=$(
+echo 'TIME:'$log_time 'MSG: One of the last read values was missing so the script exited prematurly. Last Download value:'$lastread_u' Current Download value:'$currentread_d
+        )
+  log_update
+  exit
+fi
+
+
+if test $dayofmonth -eq 1
+ then
+ echo $dayofmonth
+
+ if test $currenth -eq "0" && test $currentm -gt "00" && test $currentm -lt "05"
+   then
+   #It's the beging of the month so reset the meter
+   monthly_reset
+   else
+   #runs if it is the first of the month, but not if its between 00:00 and 00:02
+        #read and update upload meter
+        if test $lastread_u -gt $currentread_u
+        then
+                #router rebooted
+                rebooted_u
+                else
+                #router didn't reboot
+                normal_u
+        fi
+        #read and update download meter
+        if test $lastread_d -gt $currentread_d
+        then
+                #router rebooted
+                 rebooted_d
+                else
+                 #router didn't reboot
+                 normal_d
+  fi
+#runs if isn't the first of the month
+else
+
+#read and update upload meter
+        if test $lastread_u -gt $currentread_u
+        then
+                #router rebooted
+                 rebooted_u
+                else
+                 #router didn't reboot
+                 normal_u
+        fi
+        #read and update download meter
+        if test $lastread_d -gt $currentread_d
+        then
+                #router rebooted
+                 rebooted_d
+                else
+                #router didn't reboot
+                 normal_d
+        fi
+fi
+
+#
+#   Update tmeter with Updated Values
+#
+
+if [ $upload_updated -eq '1' -a $download_updated -eq '1' ]
+ then
+  echo $total_u > /mnt/sda1/traffic_meter/tmeter
+  echo $total_d >> /mnt/sda1/traffic_meter/tmeter
+  echo $currentread_u >> /mnt/sda1/traffic_meter/tmeter
+  echo $currentread_d >> /mnt/sda1/traffic_meter/tmeter
+  log_update
+ else
+  upload_log=$(echo 'TIME:'$log_time 'MSG: One of the meters values didnt update properly so the script exited without updating values. Last read:'$lastread_u' Current read:'$currentread_u' Total:' $total_u)
+  download_log=$(echo 'TIME:'$log_time 'MSG: One of the meters values didnt update properly so the script exited without updating values. Last read:'$lastread_d' Current read:'$currentread_d' Total:' $total_d)
+  log_update
+fi
+
+exit
