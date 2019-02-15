@@ -1,5 +1,5 @@
 # Description and Disclaimer
-Script for openwrt based routers that helps keep track of any unintended resets of the built-in traffic meter. These values are then saved into a new folder that can be used for monitoring.
+Script for openwrt based routers that helps keep track of any unintended resets of the built-in traffic meter. These values are then saved into a new file that can be used for monitoring.
 
 This is very much a work in progress script. In its current state on my router, it has errors that I am still working on correcting and I am by no means a scripting master. Feel free to offer suggestions and ideas you have for improvement. 
 
